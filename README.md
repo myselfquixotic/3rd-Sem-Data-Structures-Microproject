@@ -22,48 +22,37 @@ To compile and run this project, your system must have:
 ## How to Run: Version 1 (Basic Terminal Version)
 
 1. Open your terminal and navigate to the basic folder:
-
-'''bash  
-cd "Microproject Basic"
-'''
-
+   ```bash
+   cd "Microproject Basic"
+   ```
 2. Compile the C++ code using the following command:
-
-'''bash
-g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
-'''
-
+   ```bash
+   g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
+   ```
 3. Execute the simulation:
-
-'''bash
-./main.exe
-'''
+   ```bash
+   ./main.exe
+   ```
 
 ---
 
 ## How to Run: Version 2 (Advanced with Web Simulation)
 
-**Step A: Generate the Simulation Log**
-
+### Step A: Generate the Simulation Log
 1. Open your terminal and navigate to the advanced folder:
-
-'''bash
-cd "Microproject Advanced with Simulation"
-'''
-
+   ```bash
+   cd "Microproject Advanced with Simulation"
+   ```
 2. Compile the C++ backend:
+   ```bash
+   g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
+   ```
+3. Run the executable to simulate the disaster and generate the `disaster_log.json` file:
+   ```bash
+   ./main.exe
+   ```
 
-'''bash
-g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
-'''
-
-3. Run the executable to simulate the disaster and generate the disaster_log.json file:
-
-'''bash
-./main.exe
-'''
-
-**Step B: Launch the Web Visualizer**
+### Step B: Launch the Web Visualizer**
 
 Because the JavaScript uses the fetch() API to load the JSON log, you cannot simply double-click the HTML file (browsers block local file fetching for security).
 
