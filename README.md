@@ -52,7 +52,7 @@ To compile and run this project, your system must have:
    ./main.exe
    ```
 
-### Step B: Launch the Web Visualizer**
+### Step B: Launch the Web Visualizer
 
 Because the JavaScript uses the fetch() API to load the JSON log, you cannot simply double-click the HTML file (browsers block local file fetching for security).
 
