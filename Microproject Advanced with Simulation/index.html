@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyclone Grid Simulator Player</title>
+    <style>
+        body { 
+            background-color: #0a0a0a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 10px; overflow: hidden; display: flex; flex-direction: column; align-items: center;
+        }
+        .screen-container { 
+            position: relative; 
+            width: 95vw; 
+            height: 75vh; /* Restricts height to leave room for controls */
+            max-width: 1920px; 
+            display: flex; 
+            justify-content: center;
+        }
+        
+        canvas { 
+            border: 2px solid #333; box-shadow: 0 0 30px rgba(0,0,0,0.9); 
+            background-image: url('Detailed City Infrastructure Map.png');
+            background-size: 100% 100%; 
+            max-width: 100%; 
+            max-height: 100%; 
+            aspect-ratio: 16/9; /* Maintains perfect shape while shrinking */
+            transition: box-shadow 0.2s, border-color 0.2s;
+        }
+        
+        /* Red Flash Warning Class */
+        .cyclone-warning { border-color: #ff0000 !important; box-shadow: 0 0 50px rgba(255,0,0,0.8) !important; }
+
+        /* HUD Overlay */
+        #hud {
+            position: absolute; top: 20px; left: -20px; background: rgba(0, 0, 0, 0.85);
+            border: 1px solid #444; border-radius: 8px; padding: 15px; width: 280px; pointer-events: none;
+        }
+        .hud-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .hud-val { font-weight: bold; font-family: monospace; font-size: 16px; }
+        .text-green { color: #00ff00; } .text-red { color: #ff3333; } .text-yellow { color: #ffaa00; }
+
+        /* Media Player Controls */
+        #controls {
+            margin-top: 15px; width: 95vw; max-width: 1920px; background: #1a1a1a;
+            border: 1px solid #333; border-radius: 8px; padding: 10px 20px;
+            display: flex; align-items: center; gap: 15px; box-sizing: border-box;
+        }
+        button { 
+            background: #333; color: white; border: none; padding: 8px 15px; 
+            border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s;
+        }
+        button:hover { background: #555; }
+        input[type="range"] { flex-grow: 1; cursor: pointer; }
+        select { background: #333; color: white; border: none; padding: 5px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="screen-container">
+        <canvas id="gridCanvas" width="1920" height="1080"></canvas>
+        <div id="hud">
+            <h3 style="margin-top:0; color:#00ffff; border-bottom:1px solid #444; padding-bottom:5px;">METEOROLOGY CMD</h3>
+            <div class="hud-row"><span>Hours Passed:</span> <span id="hud-time" class="hud-val text-yellow">0.0</span></div>
+            <div class="hud-row"><span>Cyclones Endured:</span> <span id="hud-cyclones" class="hud-val" style="color: #ffaa00;">0</span></div>
+            <div class="hud-row"><span>Total Power Lines:</span> <span id="hud-total" class="hud-val">48</span></div>
+            <div class="hud-row"><span>Lines Intact:</span> <span id="hud-good" class="hud-val text-green">48</span></div>
+            <div class="hud-row"><span>Lines Broken:</span> <span id="hud-broken" class="hud-val text-red">0</span></div>
+            <div id="hud-status" style="margin-top: 10px; font-weight: bold; text-align: center; color: #00ff00;">ALL SYSTEMS NOMINAL</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="btn-play">Pause</button>
+        <input type="range" id="time-slider" min="0" max="100" value="0" step="0.1">
+        <span id="slider-val" style="font-family: monospace; width: 60px;">0.0h</span>
+        <select id="speed-ctrl">
+            <option value="0.05">Slow</option>
+            <option value="0.2" selected>Normal</option>
+            <option value="1.5">Fast</option>
+        </select>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gridCanvas');
+        const ctx = canvas.getContext('2d');
+        const cycloneImg = new Image();
+        cycloneImg.src = 'cyclone.png';
+
+        let gridData = null;
+        let isPlaying = true;
+        let currentSimTime = 0.0;
+        let maxSimTime = 100.0;
+        let playbackSpeed = 0.2;
+        
+        // Visual State Trackers
+        let activeCycloneAnimation = { active: false, progress: 0 };
+        let activeRepairPath = [];
+        let targetPriorityNode = -1;
+
+        // Load JSON
+        // Load JSON
+        fetch('disaster_log.json').then(r => r.json()).then(data => {
+            // NEW: Force the timeline into chronological order so concurrent crews overlap perfectly!
+            data.events.sort((a, b) => a.time - b.time);
+            
+            gridData = data;
+            maxSimTime = data.events[data.events.length - 1].time + 10;
+            document.getElementById('time-slider').max = maxSimTime;
+            requestAnimationFrame(gameLoop);
+        });
+
+        // --- Controls Event Listeners ---
+        document.getElementById('btn-play').onclick = (e) => {
+            isPlaying = !isPlaying;
+            e.target.innerText = isPlaying ? "Pause" : "Play";
+        };
+        document.getElementById('speed-ctrl').onchange = (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+        };
+        document.getElementById('time-slider').oninput = (e) => {
+            currentSimTime = parseFloat(e.target.value);
+            activeCycloneAnimation.active = false; // Reset animations on scrub
+        };
+
+        // --- The Core State Engine ---
+        // This function recalculates the exact grid status from Hour 0 to currentSimTime.
+        // This allows rewind, fast-forward, and scrubbing to work flawlessly.
+        function calculateStateAtTime(t) {
+            // NEW: Reset the animation tracker every frame so the warning clears when the storm passes
+            activeCycloneAnimation = { active: false, progress: 0 };
+            
+            let state = {
+                nodes: {}, lines: {}, brokenCount: 0, cyclonesHitCount: 0, 
+                statusMsg: "SYSTEMS ONLINE", statusColor: "#00ff00",
+                activeRepairs: [] 
+            };
+
+            gridData.nodes.forEach(n => state.nodes[n.id] = { ...n, isPowered: true });
+            gridData.lines.forEach(l => state.lines[`${l.from}-${l.to}`] = { ...l, color: '#00ff00' });
+            
+            let cycloneJustHit = false;
+
+            for (let ev of gridData.events) {
+                if (ev.time > t) break; 
+
+                if (ev.type === 'cyclone') {
+                    state.cyclonesHitCount++; 
+                    cycloneJustHit = (t - ev.time < 20.0); 
+                    if (cycloneJustHit) {
+                        activeCycloneAnimation.active = true;
+                        activeCycloneAnimation.progress = (t - ev.time) / 20.0;
+                    }
+                    Object.values(state.nodes).forEach(n => { if (n.id !== 0) n.isPowered = false; });
+                    if (ev.broken) {
+                        ev.broken.forEach(pair => {
+                            let key1 = `${pair[0]}-${pair[1]}`;
+                            let key2 = `${pair[1]}-${pair[0]}`;
+                            if(state.lines[key1]) state.lines[key1].color = '#ff0000';
+                            if(state.lines[key2]) state.lines[key2].color = '#ff0000';
+                        });
+                    }
+                } 
+                else if (ev.type === 'repair_start') {
+                    // Define distinct colors for the 10 crews
+                    const crewColors = { 
+                        1: '#ffff00', // Yellow
+                        2: '#ff00ff', // Magenta
+                        3: '#00ffaa', // Neon Green
+                        4: '#ff8800', // Orange
+                        5: '#00ccff', // Cyan
+                        6: '#ff0033', // Red/Pink
+                        7: '#b000ff', // Purple
+                        8: '#aaff00', // Lime
+                        9: '#ffffff', // White
+                        10: '#0055ff' // Blue
+                    }; 
+                    let cColor = crewColors[ev.crew] || '#ffff00';
+                    
+                    // NEW: We now save the crew ID into the array along with the target
+                    state.activeRepairs.push({ crew: ev.crew, target: ev.target, path: ev.path, color: cColor });
+                    
+                    // Turn path to the specific crew's color
+                    for(let i=0; i<ev.path.length-1; i++) {
+                        let key1 = `${ev.path[i]}-${ev.path[i+1]}`;
+                        let key2 = `${ev.path[i+1]}-${ev.path[i]}`;
+                        if(state.lines[key1]) state.lines[key1].color = cColor;
+                        if(state.lines[key2]) state.lines[key2].color = cColor;
+                    }
+                }
+                else if (ev.type === 'repair_end') {
+                    if (state.nodes[ev.target]) state.nodes[ev.target].isPowered = true;
+                    // NEW: Remove just this specific crew's job from the array
+                    state.activeRepairs = state.activeRepairs.filter(r => r.target !== ev.target);
+                    
+                    for(let i=0; i<ev.path.length-1; i++) {
+                        let key1 = `${ev.path[i]}-${ev.path[i+1]}`;
+                        let key2 = `${ev.path[i+1]}-${ev.path[i]}`;
+                        if(state.lines[key1]) state.lines[key1].color = '#00ff00';
+                        if(state.lines[key2]) state.lines[key2].color = '#00ff00';
+                    }
+                }
+            }
+            Object.values(state.lines).forEach(l => { if(l.color === '#ff0000') state.brokenCount++; });
+            return state;
+        }
+
+        // --- The Animation Loop ---
+        function gameLoop() {
+            if (!gridData) return;
+
+            if (isPlaying && currentSimTime < maxSimTime) {
+                currentSimTime += playbackSpeed;
+                document.getElementById('time-slider').value = currentSimTime;
+            }
+            document.getElementById('slider-val').innerText = currentSimTime.toFixed(1) + "h";
+
+            // 1. Calculate logical state based on current time
+            const state = calculateStateAtTime(currentSimTime);
+
+            // Update HUD
+            document.getElementById('hud-time').innerText = currentSimTime.toFixed(1);
+            document.getElementById('hud-cyclones').innerText = state.cyclonesHitCount;
+            document.getElementById('hud-broken').innerText = state.brokenCount;
+            document.getElementById('hud-good').innerText = 48 - state.brokenCount;
+            // Dynamically build the Crew Deployment List
+            const statusDiv = document.getElementById('hud-status');
+            
+            // NEW: Prioritize the Cyclone graphic. If the cyclone is on screen, show the warning.
+            if (activeCycloneAnimation.active) { 
+                statusDiv.innerHTML = "⚠️ CYCLONE WARNING ⚠️";
+                statusDiv.style.color = "#ff0000";
+            } 
+            else if (state.activeRepairs.length === 0) { 
+                statusDiv.innerHTML = "ALL SYSTEMS NOMINAL";
+                statusDiv.style.color = "#00ff00";
+            } 
+            else { 
+                let statusHTML = "";
+                let sortedRepairs = [...state.activeRepairs].sort((a, b) => a.crew - b.crew);
+                
+                sortedRepairs.forEach(r => {
+                    statusHTML += `<div style="color: ${r.color}; text-align: left; margin-top: 6px; font-size: 13px; text-shadow: 0 0 4px ${r.color};">
+                        ▶ Crew ${r.crew}: Routing to Node ${r.target}
+                    </div>`;
+                });
+                statusDiv.innerHTML = statusHTML;
+            }
+
+            // Handle CSS Red Border Warning
+            if (activeCycloneAnimation.active && activeCycloneAnimation.progress < 0.25) {
+                canvas.classList.add('cyclone-warning');
+            } else {
+                canvas.classList.remove('cyclone-warning');
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Draw Lines
+            ctx.lineWidth = 4;
+            Object.values(state.lines).forEach(line => {
+                const startNode = state.nodes[line.from];
+                const endNode = state.nodes[line.to];
+                if (startNode && endNode) {
+                    ctx.beginPath();
+                    ctx.moveTo(startNode.x, startNode.y);
+                    ctx.lineTo(endNode.x, endNode.y);
+                    ctx.strokeStyle = line.color;
+                    
+                    // Add glow for Yellow/Red lines
+                    ctx.shadowBlur = (line.color !== '#00ff00') ? 15 : 0;
+                    ctx.shadowColor = line.color;
+                    ctx.stroke();
+                }
+            });
+
+            // 3. Draw Nodes
+            ctx.shadowBlur = 0;
+            Object.values(state.nodes).forEach(node => {
+                ctx.beginPath();
+                
+                // Find if this node is targeted by a specific crew
+                let activeRepair = state.activeRepairs.find(r => r.target === node.id);
+                let isTarget = !!activeRepair;
+                let radius = isTarget ? 22 : 14; 
+                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI);
+                
+                if (node.id === 0) {
+                    ctx.fillStyle = '#ffffff'; 
+                } else if (!node.isPowered) {
+                    ctx.fillStyle = '#ff0000'; 
+                } else {
+                    ctx.fillStyle = '#00ffff'; 
+                }
+                
+                ctx.fill();
+                
+                // Make the glow match the Crew's assigned color!
+                if (node.isPowered || isTarget) {
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = isTarget ? activeRepair.color : '#00ffff';
+                }
+                
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'black';
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.id, node.x, node.y);
+            });
+
+            // 4. Draw Animated Cyclone
+            if (activeCycloneAnimation.active) {
+                let p = activeCycloneAnimation.progress; 
+                // Move diagonally from top-right (1920, 0) to bottom-left (0, 1080)
+                let cx = 1920 - (p * 1920); 
+                let cy = p * 1080;
+                // Scale up in the middle (p=0.5), scale down at edges
+                let scale = Math.sin(p * Math.PI) * 1.5; 
+                let size = 400 * scale;
+
+                if (size > 10) {
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(currentSimTime * 2); // Spin animation
+                    ctx.globalAlpha = 0.8;
+                    // Draw image centered
+                    ctx.drawImage(cycloneImg, -size/2, -size/2, size, size);
+                    ctx.restore();
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
