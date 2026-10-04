@@ -22,15 +22,15 @@ To compile and run this project, your system must have:
 ## How to Run: Version 1 (Basic Terminal Version)
 
 1. Open your terminal and navigate to the basic folder:
-  
-cd "Microproject"
+'''bash  
+cd "Microproject Basic"
 
 2. Compile the C++ code using the following command:
-
+'''bash
 g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
 
 3. Execute the simulation:
-
+'''bash
 ./main.exe
 
 ---
@@ -40,15 +40,15 @@ g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.
 **Step A: Generate the Simulation Log**
 
 1. Open your terminal and navigate to the advanced folder:
-
+'''bash
 cd "Microproject Advanced with Simulation"
 
 2. Compile the C++ backend:
-
+'''bash
 g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.cpp RestorationEngine\RestorationEngine.cpp DynamicUpdate\DynamicUpdate.cpp -o main.exe
 
 3. Run the executable to simulate the disaster and generate the disaster_log.json file:
-
+'''bash
 ./main.exe
 
 **Step B: Launch the Web Visualizer**
@@ -56,9 +56,10 @@ g++ -std=c++17 -Wall -Wextra -pedantic main.cpp Grid\Grid.cpp Priority\Priority.
 Because the JavaScript uses the fetch() API to load the JSON log, you cannot simply double-click the HTML file (browsers block local file fetching for security).
 
 1. Open the Microproject Advanced with Simulation folder inside VS Code.
-2. Right-click on index.html in the file explorer.
-3. Select "Open with Live Server".
-4. The dashboard will open in your default web browser. Use the media controls at the bottom to play, pause, or scrub through the restoration timeline.
+2. (In VS Code)You can click the "Go Live" button at the bottom right corner to open the dashboard or
+3. Right-click on index.html in the file explorer.
+4. Select "Open with Live Server".
+5. The dashboard will open in your default web browser. Use the media controls at the bottom to play, pause, or scrub through the restoration timeline.
 
 ---
 
